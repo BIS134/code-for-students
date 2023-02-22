@@ -1,0 +1,102 @@
+---
+title: "Meet the BIS134 RStudio Server"
+subtitle: "Class 1 Exercise"
+format:
+  revealjs:
+    incremental: true
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+## Assign Roles
+::: {.nonincremental}
+* In your same groups assign one person to be the facilitator
+* The role of the facilitator is to keep the group working together and use team expertise to answer questions.  
+* The team should work through this exercise together and no one should move to the next step until everyone has completed the current step.
+:::
+
+## Rstudio
+
+**No coding experience is required for this class**
+
+-   We will use [R](https://www.r-project.org/) and [RStudio](https://posit.co/) to illustrate Systems Biology concepts and to perform Systems Biology analyses.
+-   Don't worry if this is new to you, most code will be provided for you.
+
+## What are R and R Studio?
+
+-   **R** is a programming and scripting language that excels at statistical and biological analyses and at plotting.
+
+-   **RStudio** is a specialized text editor that makes it easier to run R. Technically it is an Integrated Development Environment or IDE
+
+## Accessing R Studio for this class
+
+::: nonincremental
+-   Prof Maloof set up a cloud based RStudio Server
+-   Can access from web browser
+-   No need to install software on your computer
+-   Hosted by [JetStream2](https://jetstream-cloud.org/).
+-   Special thanks to [NSF](https://www.nsf.gov/) for funding JetStream.
+:::
+
+## Log on to the BIS 134 RStudio Server {.smaller}
+
+Point your browser to <http://bis134.net:8787/>
+
+You may get an notification that the site is insecure. That is okay.
+
+Log on using the username and password that was sent to you via canvas
+
+![](figures/RstudioLogin.png)
+
+## The RStudio Screen {.smaller}
+
+::: columns
+::: {.column width="50%"}
+::: nonincremental
+-   Top left: **scripts** or programs. This may not show when you first start R
+-   Left or bottom left: **console**. This is where you type commands directly
+-   Bottom right: will show a **file browser** or **help** or **graphs**
+-   Top right: will show the **variables** that are present in your **environment**.
+:::
+:::
+
+::: {.column width="50%"}
+![](figures/Rstudio4Pane_annotated.png)
+:::
+:::
+
+## Type in the console
+
+Let's start by typing something in the console.
+
+At its simplest you can use R as a calculator.
+
+Click on the console (bottom left side) and at the `>` prompt type:
+
+```{r, echo=TRUE, eval=FALSE}
+4 * 89
+```
+
+And then press your "return" or enter key. R should print the result
+
+## Open a script file {.smaller}
+
+::: nonincremental
+-   Let's now practice opening and running a simple script.
+-   On the bottom right pane click on `Files`
+-   Click on `Class1`, then click on `Class1_script.Rmd`.
+-   This will open a simple script in the upper-left pane.
+:::
+
+![](figures/Rstudio4Pane_class1.png)
+
+## Run a script file
+
+The script file has a combination of text and computer code. The code is shown in the grey boxes. You can run each chunk of code by pressing the right arrow at the side of each code box. Read the text and run the code chunks in order. You should get a simple plot at the end.
+
+![](figures/Rstudio4Pane_CodeChunk.png)
+
+## Take a screenshot and upload to Canvas
+
+When you are done, take a screenshot that includes the Rstudio window that includes the plot and also your username (top right). Upload to canvas as part of the assignment.

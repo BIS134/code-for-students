@@ -1,0 +1,347 @@
+---
+title: "Modeling Plant Growth Rhythms"
+subtitle: "BIS134 Class 10"
+author: "Julin Maloof"
+format:
+  revealjs:
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+# Finally: A Molecular System!
+
+## Class Outline
+
+* Group Exercise: summary questions on paper.
+* Review of key experiments in Nozue paper
+* Review of Nozue Model
+* Question: can the model in Nozue actually explain the observations?
+* Group Exercise: Draw the Nozue Model
+* Group Exercise: Write an ODE for a molecular system.
+* Group Exercise: Fit the ODE and evaluate.
+* Wrap up.
+
+## Learning Objectives
+At the end of this class you should be able to:
+
+* Draw a graph representation of a simple molecular model
+* Write an ODE for a simple molecular model
+* Compare and evaluate model fits for a simple molecular system
+
+## Group Exercise 1: Overview
+
+Work with your groups to answer:
+
+a. What question were we trying to answer in Nozue 2007?
+
+b. What conclusions did we reach?
+
+## Switch to power point
+
+## Group Exercise 2: Draw a model {.smaller}
+Draw a graph diagram (edges and nodes) That includes the following components:
+
+* "Clock" (We will not try to model the clock, we will assume that there is a clock that provides 24 hour rhythms)
+* Light
+* PIF mRNA
+* PIF protein (a.k.a Growth)
+
+We will make several simplifying assumptions:
+
+1. We will not model the clock.  We will assume that there is a clock that provides 24 hour rhythms.
+2. We will assume that PIF protein is directly correlated with growth.  That is we will not model growth as a separate node.
+
+## Group Exercise 3: ODE
+
+Based on your model in the previous exercise, write an ODE for PIF protein
+
+# Fit the model
+
+## Tutorial webpage
+
+Please go to [http://bis134.net:3838/GrowthRhythms](http://bis134.net:3838/GrowthRhythms)
+
+__JM: Orient Students to the Tutorial!__
+
+## Group Exercise 4 (Jigsaw) {.smaller}
+
+(Note: Particle Swarm and Genetic Algorithm take a few minutes to run.  You can flip forward in the slides PDF to see the results, instead of waiting)
+
+* Group 1: Examine the Nelder-Mead Parameter estimation output
+* Group 2: Examine the Levenberg-Marquadt Parameter estimation output
+* Group 3: Examine the Particle Swarm Parameter estimation output
+* Group 4: Examine the Genetic Algorithm parameter estimation output
+
+Which output did you examine? Did the algorithm provide a model that fit the observations? If not, how did it fail?
+What was the cost? (look at the figure title)
+
+## Group Exercise 5 (Jigsaw)
+
+Rearrange and then compare: which algorithm(s) did best?
+
+# Code for model
+Students are not responsible for knowing this code.
+We probably will not go over it in class
+
+## Libraries
+```{r, echo=TRUE}
+library(tidyverse)
+library(deSolve)
+library(FME)
+library(pso)
+library(GA)
+```
+
+## Lights On/Off {.smaller}
+To get the lights to turn on and off we need:
+
+* An _root function_ that evalutes to 0 at each time point where we want a transition
+* An _event function_ that specifies if lights are on (1) or off (0) given the time of day
+
+We take advantage of the `%%` _modulo_ operator that returns the remainder from division.  By dividing time in hours by 24, we will have a remainder of "0" every 24 hours.
+```{r, echo=TRUE}
+#root function: when do we want to change lights?
+rf <- function(t, y=NULL, parms=NULL) {
+  min(t %% 24, (t-8) %% 24) # evaluates to 0 at t=0, 8, 24, 32, 48, etc
+}
+
+#event function: what should the light level be?
+ef <- function(t, y=c(light=NULL), parms=NULL) {
+  if ((t %% 24) >= 0 & (t %% 24) < 8) { # evaluates true between 0 and 8 hours
+    y["light"] <- 1
+  } else {
+    y["light"] <- 0
+  }
+  y
+}
+```
+
+```{r, include=FALSE}
+# check it
+sapply(0:72, rf)
+```
+```{r, include=FALSE}
+sapply(0:72, ef)
+```
+
+
+## Model parameters
+
+These are the starting parameters.  We will use parameter estimation to refine these values
+```{r, echo=TRUE}
+parameters <- c(
+ phase = 18, # peak of PIF mRNA change in expression (not peak level!)
+ rate_translation = 1,
+ rate_degradation_base = 0.1,
+ rate_degradation_light = 10
+)
+```
+
+## Set up the initial state and times
+
+```{r, echo=TRUE}
+times = seq(0, 120, by = .1) # hours, 1 hour at a time
+```
+
+Just guessing at these; at dawn I expect lights to be on and there to be both PIF mRNA and protein.
+```{r, echo=TRUE}
+state <- c(
+  PIFmRNA = 2,
+  PIFprot = 2,
+  light = 1
+  )
+```
+
+## The model {.smaller}
+```{r, echo=TRUE}
+model <- function(t, state, parameters) {
+  #pso and ga lose the parameter names, so here we had them back...
+  if(is.null(names(parameters))) names(parameters) <- c("phase", "rate_translation", "rate_degradation_base", "rate_degradation_light")
+  
+  with(as.list(c(state, parameters)), { # allows us to refer to state and parameter components by name
+    
+    t_rad <- 2*pi*((t-phase)/24) # adjust for phase, convert time to radians.  
+                                   
+   #ODEs that specify the rates of change for each variable
+    dPIFmRNA <- cos(t_rad)*.25 # remember this is the rate of change of PIFmRNA
+    
+    dPIFprot <- rate_translation*PIFmRNA - rate_degradation_base*PIFprot - rate_degradation_light*PIFprot*light
+    
+    dlight <- 0 # changes are handled by event, 0 here means no change via the deriviative function
+    
+    # return the rate of change
+    list(c(dPIFmRNA,dPIFprot, dlight))
+  })
+}
+```
+
+## Fit the model
+
+```{r, echo=TRUE}
+fit <- ode(state, times, model, parameters, events=list(func=ef, root=TRUE), rootfun=rf)
+head(fit) # look at the first few lines
+```
+## output
+```{r}
+matplot(x=fit[,1], fit[,-1], type="l", lty=1, lwd=2)
+legend("topright", legend=colnames(fit)[-1], col=1:3, lwd=2)
+```
+
+## Get the real data {.smaller}
+
+Note: data has been de-trended
+```{r}
+data <- read.csv("../Data/Col_growth_detrended.csv") %>% 
+  rename(PIFprot=growth) %>%
+  mutate(PIFprot=1000*PIFprot)
+head(data)
+plot(data)
+```
+## Parameter Estimation set up
+The observed data starts at ZT 8, so set up the state to approximate that
+```{r, echo=TRUE}
+state <- c(
+  PIFmRNA = 2*(12-data$time[1])/12, # adjust for where we are in the time course, given guess of peak PIFmRNA at dawn
+  PIFprot = data$PIFprot[1], 
+  light = 0 # because the data starts at time 8.16 and lights are off
+  )
+```
+
+## Parameter estimation Nelder-Mead
+```{r}
+modelCost <- function(param) {
+  fit <- ode(state, times=data$time, model, param, events=list(func=ef, root=TRUE), rootfun=rf)
+  modCost(fit, data)
+}
+  
+fit.out.nm <- modFit(modelCost, p=parameters, method="Nelder-Mead", lower=0, upper=100)
+
+newfit.nm <- ode(state, times=data$time, model, parms = fit.out.nm$par, events=list(func=ef, root=TRUE), rootfun=rf )
+
+cost.nm <- modCost(newfit.nm, data)$model
+
+newfit.nm <- cbind(newfit.nm, observed=data$PIFprot)
+
+newfit.nm %>%
+  as_tibble() %>%
+  select(time, predicted=PIFprot, observed) %>%
+  pivot_longer(-time, names_to = "type", values_to = "growth") %>%
+  ggplot(aes(x=time, y=growth, color=type)) +
+  geom_line(lwd=1) +
+  scale_color_viridis_d(end=.9) +
+  ggtitle(str_c("Nelder-Mead optimization. Cost: ", round(cost.nm,3)))
+```
+
+## Parameter estimation Levenberg-Marquadt {.smaller}
+This is a gradient-descent method.  Could get caught in a local minimum.
+```{r}
+fit.out.lm <- modFit(modelCost, p=parameters, method="Marq")
+
+newfit.lm <- ode(state, times=data$time, model, parms = fit.out.lm$par, events=list(func=ef, root=TRUE), rootfun=rf )
+
+cost.lm <- modCost(newfit.lm, data)$model
+
+newfit.lm <- cbind(newfit.lm, observed=data$PIFprot)
+
+newfit.lm %>%
+  as_tibble() %>%
+  select(time, predicted=PIFprot, observed) %>%
+  pivot_longer(-time, names_to = "type", values_to = "growth") %>%
+  ggplot(aes(x=time, y=growth, color=type)) +
+  geom_line(lwd=1) +
+  scale_color_viridis_d(end=.9) +
+  ggtitle(str_c("Levenberg-Marquardt optimization. Cost: ", round(cost.lm,3)))
+```
+
+## particle swarm
+```{r}
+modelCostPSO <- function(param) {
+  fit <- ode(state, times=data$time, model, param, events=list(func=ef, root=TRUE), rootfun=rf)
+  modCost(fit, data)$model
+}
+
+fit.pso <- psoptim(parameters, modelCostPSO, lower = 0, upper = 100, control = list(trace=1, REPORT=10, trace.stats=FALSE, maxit=500, type="SPSO2011", hybrid=FALSE, w=c(1,.5), c.p=5, c.g=.5))
+
+newfit.pso <- ode(state, times=data$time, model, parms = fit.pso$par, events=list(func=ef, root=TRUE), rootfun=rf )
+
+cost.pso <- modCost(newfit.pso, data)$model
+
+newfit.pso <- cbind(newfit.pso, observed=data$PIFprot)
+
+newfit.pso %>%
+  as_tibble() %>%
+  select(time, predicted=PIFprot, observed) %>%
+  pivot_longer(-time, names_to = "type", values_to = "growth") %>%
+  ggplot(aes(x=time, y=growth, color=type)) +
+  geom_line(lwd=1) +
+  scale_color_viridis_d(end=.9) +
+  ggtitle(str_c("Particle Swarm optimization. Cost: ", round(cost.pso,3)))
+```
+## GA
+```{r, message=FALSE}
+set.seed(123)
+modelCostGA <- function(param) {
+  fit <- ode(state, times=data$time, model, param, events=list(func=ef, root=TRUE), rootfun=rf)
+  -modCost(fit, data)$model
+}
+
+fit.ga <- ga(type="real-valued", fitness=modelCostGA, lower=rep(0,4), upper=c(24, 1, 1, 1), popSize = 100, maxiter = 50, optim=TRUE,names=names(parameters))
+
+newfit.ga <- ode(state, times=data$time, model, parms = fit.ga@solution, events=list(func=ef, root=TRUE), rootfun=rf )
+
+cost.ga <- modCost(newfit.ga, data)$model
+
+newfit.ga <- cbind(newfit.ga, observed=data$PIFprot)
+
+newfit.ga %>%
+  as_tibble() %>%
+  select(time, predicted=PIFprot, observed) %>%
+  pivot_longer(-time, names_to = "type", values_to = "growth") %>%
+  ggplot(aes(x=time, y=growth, color=type)) +
+  geom_line(lwd=1) +
+  scale_color_viridis_d(end=.9) +
+  ggtitle(str_c("Genetic Algorithm optimization. Cost: ", round(cost.ga,3)))
+```
+## Wrap up {.smaller}
+
+* Today you have seen how we can use ODEs to model a simple molecular system.
+* You also got to see "parameter estimation" in action on a real data set.
+* The results show that our model is possible
+* Next steps:
+  * Apply or fit model to other experiments/genotypes
+  * Ground truth parameter estimates
+
+```{r, include=FALSE, eval=FALSE}
+## GA with mRNA init
+
+set.seed(123)
+modelCostGAm <- function(param) {
+  newstate <- c(PIFmRNA=param[5], state[2:3])
+  fit <- ode(newstate, times=data$time, model, param[-5], events=list(func=ef, root=TRUE), rootfun=rf)
+  -modCost(fit, data)$model
+}
+
+fit.gam <- ga(type="real-valued", fitness=modelCostGAm, lower=rep(0,5), upper=c(24, 1, 1, 1, 2), popSize = 100, maxiter = 50, optim=TRUE,names=c(names(parameters), "PIFmRNA"))
+
+newstate <- c(PIFmRNA=fit.gam@solution[5], state[2:3])
+
+newfit.gam <- ode(newstate, times=data$time, model, parms = fit.gam@solution[-5], events=list(func=ef, root=TRUE), rootfun=rf )
+
+cost.gam <- modCost(newfit.gam, data)$model
+
+newfit.gam <- cbind(newfit.gam, observed=data$PIFprot)
+
+newfit.gam %>%
+  as_tibble() %>%
+  select(time, predicted=PIFprot, observed) %>%
+  pivot_longer(-time, names_to = "type", values_to = "growth") %>%
+  ggplot(aes(x=time, y=growth, color=type)) +
+  geom_line(lwd=1) +
+  scale_color_viridis_d(end=.9) +
+  ggtitle(str_c("Genetic Algorithm optimization. Cost: ", round(cost.gam,3)))
+```

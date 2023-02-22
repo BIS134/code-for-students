@@ -1,0 +1,211 @@
+---
+title: "Run the S-I-R model in RStudio"
+subtitle: "BIS134 Class 3, part 2"
+author: "Julin N. Maloof"
+format:
+  revealjs:
+    incremental: false
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+## The S-I-R model {background-image="figures/figure_02_10.jpg" background-size="contain"}
+
+## The S-I-R model
+
+-   A classic epidemiology model
+-   Uses ordinary differential equations (ODEs) to model disease
+    progression through a population.
+-   We will implement this model in R
+-   We will study how changes in model parameters and structure affect
+    the predictions
+
+## Goals of this exercise
+
+After these exercises you should be able to: 
+
+* Run an ODE model in R
+when given the code
+* Write ODE equations in a proper format for R
+* Change model parameters in R
+* Interpret model output and predictions
+
+# Set up
+
+## Logon
+
+Logon to the BIS 134 RStudio Server at
+[http://BIS134.net:8787](http://BIS134.net:8787%5D)
+
+![](figures/RstudioLogin.png)
+
+## Open the file
+
+Click on the `Files` Tab (lower right pane)
+
+Click on the folder `Class3` and then the file `Chapter2-SIR--students.Rmd`
+
+The program will load into the upper left pane on your screen
+
+# Step through the file
+
+I will briefly explain each code chunk.
+
+I will spend more time on the parts that I want you to learn how to
+modify for this class.
+
+## Libraries
+
+```{r, echo=TRUE, eval=FALSE}
+library(deSolve)
+library(tidyverse)
+```
+
+Libraries provide additional functionality to R. 
+
+* `deSolve` provides function for working with ODEs
+* `tidyverse` provides enhanced data manipulation and plotting functions
+
+## Run the first code chunk {.smaller}
+
+Press the triangle at the right of the code chunk in Rstudio to run this section of code.
+
+![](figures/Libraries_Code_Chunk.png)
+
+You will see some text printed below the code chunk. (May be red on your screen)
+```{r, echo=FALSE, eval = TRUE, warning=TRUE, message=TRUE}
+library(deSolve)
+library(tidyverse)
+```
+
+## Parameters
+
+You may want to refer to figure 2.10 in the book as we go through this.
+
+Here we define the model parameters in a form appropriate for `deSolve`.
+
+If I ask you to modify a rate or other parameter, here is where you
+would do it.
+
+```{r, echo=TRUE}
+parameters <- c(
+  r_birth = 3, # 3 people born or emigrate per day
+  r_death = 0.02, # 2 % of infected people die per day
+  r_suscept = 0.01, # 1 % of the recovered people become susceptible per day
+  r_recovery = 0.05, # 5% of the infected people gain immunity per day
+  r_infection = 0.0005 # infection rate
+)
+```
+
+
+## Check that parameters loaded
+
+To make sure that the parameters got defined,  
+type `parameters` in the console (lower left pane).  
+It should show you the contents of the parameters object:
+
+```{r, echo=TRUE}
+parameters
+```
+
+
+## Initial state
+
+This defines the initial size of the populations at time 0.
+
+I may ask you to modify this.
+
+```{r, echo=TRUE}
+state <- c(
+  S = 990, #990 susceptible individuals at the beginning
+  I = 10, #10 infected individuals at the beginning
+  R = 0 #no recovered individuals at the beginning
+)
+```
+
+## Specify the model
+
+Here is the model. It consists of a series of ODEs.
+
+You need to able to write these equations (but not the surrounding code) 
+
+Note: I have omitted the equation for dI
+
+```{r, eval=FALSE, echo=TRUE}
+model <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), { # allows us to refer to state and parameter components by name
+   #ODEs that specify the rates of change for each variable
+    dS = r_birth + r_suscept*R - r_infection*S*I
+    dI = # Fill this in
+    dR = r_recovery*I - r_suscept*R
+    
+    # return the rate of change
+    list(c(dS, dI, dR))
+  })
+}
+```
+
+## Group Exercise 1
+
+__Write the equation for `dI` in Rstudio__
+
+Note that spelling must precisely match the defined parameter names
+
+```{r, eval=TRUE, echo=FALSE}
+model <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), { # allows us to refer to state and parameter components by name
+   #ODEs that specify the rates of change for each variable
+    dS = r_birth + r_suscept*R - r_infection*S*I
+    dI = r_infection*S*I - r_recovery*I - r_death*I
+    dR = r_recovery*I - r_suscept*R
+    
+    # return the rate of change
+    list(c(dS, dI, dR))
+  })
+}
+```
+
+## Set up time points
+
+Here we define the time points at which we want model output to be
+reported.
+
+`seq` returns a sequence of numbers. In this case from 0 to 100, 1 at a
+time.
+
+```{r, echo=TRUE}
+times = seq(0, 100, by = 1) # days 0 to 100, 1 day at a time
+```
+
+(you can type `times` in the console after running the above to see what happened)
+
+# Run model and interpret output
+
+## Run the model
+
+The `ode()` function fits the model. Results will be in the object `fit`
+
+```{r, echo=TRUE}
+fit <- ode(state, times, model, parameters)
+```
+
+## Examine results
+
+The `head()` function shows us the first few lines of `fit`
+
+```{r, echo=TRUE}
+head(fit) # look at the first few lines
+```
+
+## Plot the results
+
+```{r, echo=TRUE, eval=FALSE}
+fit %>%
+  as.data.frame() %>%
+  pivot_longer(-time, names_to = "parameter") %>%
+  ggplot(aes(x=time, y=value, color=parameter)) +
+  geom_line(lwd=2) +
+  scale_color_viridis_d(option = "plasma")
+```
+

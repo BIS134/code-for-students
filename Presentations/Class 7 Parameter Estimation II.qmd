@@ -1,0 +1,414 @@
+---
+title: "Parameter Estimation II"
+subtitle: "BIS134 Class 7"
+author: "Julin Maloof"
+format:
+  revealjs:
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+```{r}
+library(tidyverse)
+library(deSolve)
+library(FME)
+library(plotly)
+library(pso)
+```
+
+```{r, eval=FALSE}
+# make some plots and save them to use in constructed figures
+
+mpgsmall <- mpg %>% filter(!duplicated(displ)) 
+
+lm.mpg <- lm(cty ~ displ, data=mpgsmall)
+
+mpgsmall$predicted_good <- predict(lm.mpg)
+
+int.bad <- 15
+slope.bad <- 1
+
+int.better <-20
+slope.better <- -1 
+
+mpgsmall$predicted_bad <- int.bad + mpgsmall$displ*slope.bad
+mpgsmall$predicted_better <- int.better + mpgsmall$displ*slope.better
+
+y1bad <- int.bad + slope.bad * min(mpgsmall$displ)
+y2bad <- int.bad + slope.bad * max(mpgsmall$displ)
+
+y1better <- int.better + slope.better * min(mpgsmall$displ)
+y2better <- int.better + slope.better * max(mpgsmall$displ)
+
+betterfit <- mpgsmall%>%
+  ggplot(aes(x=displ, y=cty)) +
+  geom_point() +
+  geom_segment(aes(xend=displ, yend=predicted_better),lty=2) +
+  geom_segment(x=min(mpgsmall$displ), y=y1better, xend=max(mpgsmall$displ), yend=y2better, color="blue") +
+  geom_point(aes(y=predicted_better), color="skyblue") +
+  xlab("Engine displacement (L)") +
+  ylab("City m.p.g") +
+  ggtitle("better fit") +
+  theme(text = element_text(size=18))
+
+badfit <- mpgsmall%>%
+  ggplot(aes(x=displ, y=cty)) +
+  geom_point() +
+  geom_segment(aes(xend=displ, yend=predicted_bad),lty=2) +
+  geom_segment(x=min(mpgsmall$displ), y=y1bad, xend=max(mpgsmall$displ), yend=y2bad, color="darkred") +
+  geom_point(aes(y=predicted_bad), color="red") +
+  xlab("Engine displacement (L)") +
+  ylab("City m.p.g") +
+  ggtitle("less good fit") +
+  theme(text = element_text(size=18))
+
+
+jpeg("figures/mpg_2plot.jpg", width=960, height=480)
+gridExtra::grid.arrange(badfit, betterfit, ncol=2) 
+dev.off()
+```
+
+```{r, eval=FALSE}
+#3D plot of those two SSEs
+getcost <- function(par, x=mpgsmall$displ, y=mpgsmall$cty) {
+  pred <- par[1] + par[2]*x
+  sum((pred-y)^2)
+}
+
+badSSE <- getcost(c(int.bad, slope.bad))
+betterSSE <- getcost(c(int.better, slope.better))
+
+tibble(intercept=c(int.bad, int.better),
+       slope=c(slope.bad, slope.better),
+       cost=c(badSSE, betterSSE),
+       legend=c("bad", "better")) %>%
+  plot_ly() %>%
+  add_markers(x=~intercept, y=~slope, z=~cost, color=~legend, colors=c("red", "skyblue")) %>%
+  layout(scene=list(
+    xaxis=list(range=c(0,40)),
+    yaxis=list(range=c(-5,4))))
+#I can't get this to save programatically, so if you want a new version, run the code and save the image
+```
+
+## Class Outline
+* Review of what we discussed so far about __parameter estimation__
+* Illustration of how an algorithm might search for the best parameters
+* Class exercises on parameter estimation
+* Discussion and wrap up
+
+## Learning Objectives
+* Know how to relate a cost function (like SSE) and parameters to a 3D surface
+* Understand what makes a cost surface difficult or easy to search
+* Interpret graphical representations of the cost surface and search outcomes
+* Have a basic/general feel for what optimization algorithms are doing
+
+## Review and overview {.smaller}
+:::{.incremental}
+* __Parameters__ are the numerical "constants" of the model
+  - Examples include rates in ODEs, slopes and intercepts in linear regressions (etc)
+* We want to find the parameters that provide the "best" fit of the model to observations
+* Minimize the __"cost"__ or __"loss"__...usually the Sum Squared Error (SSE)
+* For regressions this is mathematically solvable
+* For most other models we have to search __parameter space__ for the __lowest cost__
+* This is also known as __optimization__
+:::
+
+## Searching for the best parameters {.smaller}
+:::{.incremental}
+* How do we find the parameters that minimize SSE?
+* Think of it as walking downhill
+* General outline:
+- Pick some parameter values (at random, or make a guess)
+- Fit the model with these parameters
+- Calculate SSE
+- Explore the local space around the parameters to determine which direction leads to a lower SSE (i.e. downhill)
+- Move in that direction
+- Repeat until no more improvement
+:::
+
+## Illustration: Parameter Estimation {.smaller}
+::::{.columns}
+:::{.column width="40%"}
+![](figures/mpg_2plot_combined_pt1.png)
+:::
+:::{.column width="60%"}
+* Want to visualize the relationship between parameters (slope and intercept) and SSE
+* Pick an intercept(15) and slope (1) and calculate SSE
+* Plot intercept on the x-axis, slope on the y-axis, and SSE on the z-axis.
+* To optimize parameters, examine area around this point and figure out which way is "down" (lower SSE)
+* Pick a new set of parameters based on this information
+:::
+::::
+
+## Illustration: Parameter Estimation {.smaller}
+::::{.columns}
+:::{.column width="60%"}
+![](figures/mpg_2plot_combined.png)
+:::
+:::{.column width="40%"}
+* Pick a new intercept(20) and slope (-1) and calculate SSE
+* Repeat until can't go downhill
+:::
+::::
+
+## The cost surface {.smaller}
+::::{.columns}
+:::{.column width="65%"}
+```{r}
+mpgsmall <- mpg %>% filter(!duplicated(displ)) 
+
+lm.mpg <- lm(cty ~ displ, data=mpgsmall)
+
+getcost <- function(par, x=mpgsmall$displ, y=mpgsmall$cty) {
+  pred <- par[1] + par[2]*x
+  sum((pred-y)^2)
+}
+
+true_intercept <- lm.mpg$coefficients[1]
+true_slope <- lm.mpg$coefficients[2]
+
+best_cost <- getcost(c(true_intercept, true_slope))
+
+intercept_range <- seq(0,40,length.out=200)
+slope_range <- seq(-10,5,length.out=200)
+
+cost <- expand_grid(intercept=intercept_range, slope=slope_range) %>%
+  mutate(cost=map2_dbl(intercept, slope, ~getcost(c(.x,.y))))
+
+costmesh <- matrix(cost$cost, nrow=length(intercept_range))
+
+pl <- cost %>% plot_ly() %>%
+  add_surface(x=~intercept_range,
+              y=~slope_range, 
+              z=~costmesh, 
+              opacity = 0.65, 
+              showscale=FALSE, 
+              contours=list(z=list(show=TRUE, 
+                                   color=I("grey90"), 
+                                   size=1000))) %>%
+  layout(scene=list(zaxis=list(nticks=100, showgrid=FALSE, showticklabels=FALSE, ticks="", title=list(text="cost")),
+                    xaxis=list(title=list(text="intercept")),
+                    yaxis=list(title=list(text="slope")))) %>%
+  add_markers(x=true_intercept, y = true_slope, z=best_cost,size=15, color=I("red"), showlegend=FALSE) 
+
+pl
+```
+:::
+:::{.column width="35%"}
+* Now let's look at the entire cost surface
+* The surface represents the cost (SSE) of many different intercept and slope combinations.
+* The lowest cost is shown by the red ball.
+:::
+::::
+
+
+## Animation: Parameter Estimation {.smaller}
+::::{.columns}
+:::{.column width="65%"}
+```{r}
+par.init <- c(intercept=5,slope=-8) 
+
+fulloptim <- optim(c(intercept=5,slope=-8), getcost)
+
+track <- tibble(step=seq_len(fulloptim$counts["function"])) %>%
+  mutate(optim.result=map(step, ~ optim(par.init, getcost, control=list(maxit=.x)))) %>% #optimize for number of steps
+  mutate(df=map(optim.result, ~  c(.x$par, cost=.x$value))) %>% # get the cost at each step
+  mutate(df2=map(step, ~ bind_rows(df[1:.x]))) %>% #for each step create a dataframe with all prior results
+  unnest(df2) 
+
+pl2 <- pl %>% add_trace(
+  x=~intercept, 
+  y=~slope, 
+  z=~cost,
+  frame=~step, 
+  mode="lines+markers", 
+  color=I("yellow"),
+  marker=list(size=3, color=I("black")),
+  type="scatter3d",
+  line = list(simplify = F),
+  data=track,
+  inherit = FALSE,
+  showlegend = FALSE) %>%
+  animation_opts(
+    frame=100
+  )
+pl2
+```
+:::
+:::{.column width="35%"}
+* Remember goal: minimize the cost function
+* Generally, no way to know the shape of the SSE surface or the location of the best SSE in advance
+* The algorithm makes a guess, evaluates its local surroundings to determine next step
+* The process is illustrated here
+:::
+::::
+
+
+## Group Exercises.
+
+Go to [http://bis134.net:3838/ParameterEstimation_II/](http://bis134.net:3838/ParameterEstimation_II/)
+
+Work with your group and enter your responses on Canvas.
+
+## Group Exercises...
+
+
+## A more challenging situation
+
+For a surface such as the one on the previous slide this is an easy problem to solve, just go downhill
+
+But what if there are multiple "local minima" but only one true minimum?
+
+If the algorithm just does downhill it may get trapped in a local minimum.
+
+```{r}
+
+
+griewank <- function(xx)
+{
+  ##########################################################################
+  #
+  # GRIEWANK FUNCTION
+  #
+  # Authors: Sonja Surjanovic, Simon Fraser University
+  #          Derek Bingham, Simon Fraser University
+  # Questions/Comments: Please email Derek Bingham at dbingham@stat.sfu.ca.
+  #
+  # Copyright 2013. Derek Bingham, Simon Fraser University.
+  #
+  # THERE IS NO WARRANTY, EXPRESS OR IMPLIED. WE DO NOT ASSUME ANY LIABILITY
+  # FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+  # derivative works, such modified software should be clearly marked.
+  # Additionally, this program is free software; you can redistribute it 
+  # and/or modify it under the terms of the GNU General Public License as 
+  # published by the Free Software Foundation; version 2.0 of the License. 
+  # Accordingly, this program is distributed in the hope that it will be 
+  # useful, but WITHOUT ANY WARRANTY; without even the implied warranty 
+  # of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+  # General Public License for more details.
+  #
+  # For function details and reference information, see:
+  # http://www.sfu.ca/~ssurjano/
+  #
+  ##########################################################################
+  #
+  # INPUT:
+  #
+  # xx = c(x1, x2, ..., xd)
+  #
+  ##########################################################################
+  
+  ii <- c(1:length(xx))
+  sum <- sum(xx^2/4000)
+  prod <- prod(cos(xx/sqrt(ii)))
+  
+  y <- sum - prod + 1
+  return(y)
+}
+
+
+```
+
+```{r}
+x1_range <- seq(-8, 8,length.out=500)
+x2_range <- seq(-8, 8,length.out=500)
+
+cost <- expand_grid(x1=x1_range, x2=x2_range) %>%
+  mutate(cost=map2_dbl(x1, x2, ~griewank(c(.x,.y))))
+
+costmesh <- matrix(cost$cost, nrow=length(x1_range))
+
+pl <- cost %>% plot_ly() %>%
+  add_surface(x=~x1_range,
+              y=~x2_range, 
+              z=~costmesh, 
+              opacity = 0.65, 
+              showscale=FALSE, 
+              contours=list(z=list(show=TRUE))) %>%
+  layout(scene=list(zaxis=list(nticks=100, showgrid=FALSE, showticklabels=FALSE, ticks="", title=list(text="cost")),
+                    xaxis=list(title=list(text="x1")),
+                    yaxis=list(title=list(text="x2"))))
+pl
+```
+
+
+
+## Melder-Nead search
+```{r}
+set.seed(123)
+par.init <- c(x1=5.3, x2=4.5) 
+
+fulloptim <- optim(par.init, griewank)
+
+track <- tibble(step=seq_len(fulloptim$counts["function"])) %>%
+  mutate(optim.result=map(step, ~ optim(par.init, griewank, control=list(maxit=.x)))) %>% #optimize for number of steps
+  mutate(df=map(optim.result, ~  c(.x$par, cost=.x$value))) %>% # get the cost at each step
+  select(step, df) %>%
+  bind_rows(tibble(step=1, df=list(c(par.init, cost=griewank(par.init)))), .) %>%
+  mutate(df2=map(step, ~ bind_rows(df[1:.x]))) %>% #for each step create a dataframe with all prior results
+  unnest(df2) 
+
+pl2 <- pl %>% add_trace(
+  x=~x1, 
+  y=~x2, 
+  z=~cost,
+  frame=~step, 
+  mode="lines+markers", 
+  color=I("red"),
+  marker=list(size=3, color=I("black")),
+  type="scatter3d",
+  line = list(simplify = F),
+  data=track,
+  inherit = FALSE,
+  showlegend = FALSE) %>%
+  animation_opts(
+    frame=50
+  )
+pl2
+```
+
+## Particle Swarm Optimization
+```{r, message=FALSE}
+set.seed(112)
+par.init <- c(x1=NA, x2=NA) 
+fulloptim <- psoptim(par.init, griewank, upper=8, lower = -8, control = list(trace=1, REPORT=1, trace.stats=TRUE, maxit=200, v.max=.25))
+
+particles <- fulloptim$stats %>% as_tibble() %>% 
+  mutate(particle=map(f, ~ as.character( 1:length(.x))),
+         x1=map(x, ~ .x[1,]),
+         x2=map(x, ~.x[2,])) %>%
+  select(-x) %>%
+  unnest(c(particle, f,x1,x2)) 
+
+pl2 <- pl %>% add_markers(
+  x=~x1, 
+  y=~x2, 
+  z=~f,
+  frame=~it, 
+  data=particles,
+  inherit = FALSE,
+  showlegend = FALSE) %>%
+  animation_opts(frame=10)
+pl2
+```
+
+## Wrap up 
+* To predict system behavior we need models that have reasonable parameters
+* Sometimes we can measure directly (bottom up)
+* Other times we have to estimate parameters (top down)
+* For top down we use computer algorithms to search for parameters that provide the best match between model predictions and observed data
+* Will implement for ODe in my next lecture
+
+## Very Brief overview of optimization strategies {.smaller}
+* Grid search
+  - untractable for anything other than the simplest systems
+* Gradient descent methods
+  - Calculate slope or second derivative (change in slope) and move downhill
+* Heuristic methods
+  - Evaluate a few "random" points near the current point and move to lowest
+  - Nelder-Mead is an example
+* Population methods (aka meta-heuristic)
+  - Loosely emulate some biological process
+  - Generally multiple search "particles" or "organisms" working at once
+  - Some sharing of information or "recombination' or "evolution"

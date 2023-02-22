@@ -1,0 +1,364 @@
+---
+title: "S-I-R Sensitivity Analysis and Extensions"
+subtitle: "BIS 134 Class 4"
+author: "Julin N. Maloof"
+format:
+  revealjs:
+    incremental: false
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The S-I-R model {background-image="figures/figure_02_10.jpg" background-size="contain"}
+
+## Learning objectives
+
+After this class you should be able to: 
+
+* Understand the goals and methods of local and global sensitivity analysis
+* Perform a sensitivity analysis (given scripts)
+* Interpret a sensitivity analysis
+* Change a model to accommodate new scenarios
+
+## Model Evalutation: Consistency and Robustness {.incremental}
+
+* __Consistency:__ Does the model perform consistent with your understanding of the system?
+  - If not, is the model wrong or is your understanding wrong?
+* __Robustness:__ How _sensitive_ is the model to changes in parameters, inputs, etc?
+
+## Model use and application
+
+* Use as-is or with slight modification
+  - e.g. If the virus mutates to have twice the infectivity rate, how will that impact deaths?
+* change in model structure toward a specific goal
+  - e.g. If infected people are quarantined, how will that affect disease spread?
+
+## Sensitivity Analysis:
+
+We will work with two kinds of sensitivity analyses:
+
+* __Local__ sensitivity analysis to test model robustness
+* __Global__ sensitivity analyses for "what-if" scenarios:
+  - Single parameter range tests
+  - __Monte Carlo__ analysis of mutliple parameters
+  
+# Set up
+
+## Logon
+
+Logon to the BIS 134 RStudio Server at
+[http://BIS134.net:8787](http://BIS134.net:8787%5D)
+
+![](figures/RstudioLogin.png)
+
+## Open the file
+
+Click on the `Files` Tab (lower right pane)
+
+Click on the folder `Class4` and then the file `SIR-Sensitivity--students.Rmd`
+
+The program will load into the upper left pane on your screen
+
+# Step through the file
+
+I will briefly explain each code chunk.
+
+I will spend more time on the parts that I want you to learn how to
+modify for this class.
+
+## Libraries
+
+```{r, echo=TRUE, eval=FALSE}
+library(deSolve)
+library(FME)
+library(tidyverse)
+```
+
+Libraries provide additional functionality to R. 
+
+* `deSolve` provides function for working with ODEs
+* `tidyverse` provides enhanced data manipulation and plotting functions
+* `FME` provides functions for sensitivity analysis
+
+## Run the first code chunk {.smaller}
+
+Press the triangle at the right of the code chunk in Rstudio to run this section of code.
+
+You will see some text printed below the code chunk. (May be red on your screen)
+```{r, echo=FALSE, eval = TRUE, warning=TRUE, message=TRUE}
+library(deSolve)
+library(FME)
+library(tidyverse)
+```
+
+## Set up the model {.smaller}
+
+This combines many of the separate code-chunks that we used last time into a single block
+
+```{r, echo=TRUE}
+parameters <- c(
+  r_birth = 3, # 3 people born or emigrate per day
+  r_death = 0.02, # 2 % of infected people die per day
+  r_suscept = 0.01, # 1 % of the recovered people become susceptible per day
+  r_recovery = 0.05, # 5% of the infected people gain immunity per day
+  r_infection = 0.0005 # infection rate
+)
+
+state <- c(
+  S = 990, #990 susceptible individuals at the beginning
+  I = 10, #10 infected individuals at the beginning
+  R = 0 #no recovered individuals at the beginning
+)
+
+times = seq(0, 100, by = 1) # days 0 to 100, 1 day at a time
+
+model <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), { # allows us to refer to state and parameter components by name
+    #ODEs that specify the rates of change for each variable
+    dS = r_birth + r_suscept*R - r_infection*S*I
+    dI = r_infection*S*I - r_recovery*I - r_death*I
+    dR = r_recovery*I - r_suscept*R
+    
+    # return the rate of change
+    list(c(dS, dI, dR))
+  })
+}
+```
+
+
+## Run the model
+
+The `ode()` function fits the model. Results will be in the object `fit`.  This is with the original parameters
+
+```{r, echo=TRUE}
+fit <- ode(state, times, model, parameters)
+```
+
+
+# Sensitivity analysis I
+
+Local Sensitivity Analysis
+
+## Local Sensitivity Analysis {.incremental}
+
+* Tests the effect of varying each parameter a very small amount
+* Called "local" because the parameters do not change much
+* Use as a check for model robustness
+* Use to determine which parameters to spend more effort on measuring
+
+## Local Sensitivity Analysis for "I"
+
+We use the `senseFun` function to do this analysis.
+```{r}
+sensLocal <- sensFun(func= function(parms) ode(state, times, model, parms), 
+                parms=parameters,
+                sensvar = "I" # which variable do we want to do sensitivity analysis on?
+)
+```
+## Local Sensitivity Analys plot {.smaller}
+
+* The sensitvity values represent the amount of change in `I` relative to the change in the parameter
+* The peak value of "3" for `r_infection` means that a 100% change in r_infection would cause an average change of 300% of `I` at that time
+```{r}
+plot(sensLocal, legpos="topright")
+```
+
+## Local Sensitivity summary plot {.smaller}
+
+* The values represent the amount of change in `I` relative to the change in the parameter
+* Mean of "0.2" for `r_infection` means that a 100% change in r_infection would cause an average change of 20% of `I` across the time course
+* "L1" and "L2" are summaries of how different from zero the sensitives are across the time course.  L2 is more sensitive to the magnitude of the distance from zero.
+```{r}
+plot(summary(sensLocal))
+```
+## Local Sensitivity summary plot {.smaller}
+
+```{r, echo=FALSE}
+plot(summary(sensLocal))
+```
+
+## Group Exercise 1 {.smaller}
+
+Look at the previous two plots to answer these questions:
+
+a. Although increasing `r_infection` has a positive effect on `I` _on average_, can you explain why the sensitivity is sometimes below zero? (see the "Min" graph)
+b. Interpret the mean `r_recovery` sensitivity
+c. Is the `r_recovery` sensitivity every above zero?  What does this tell you?
+d. `r_infection` sensitivity get much further away from zero than `r_recovery` sensitivity and yet `r_recovery` has a greater L1.  Explain.
+
+## Local Sensitivity Analysis conclusions {.smaller}
+
+* In general the parameters are sensitive in the direction expected
+* In general the of the sensitivities are between -1 and +1, no cause for alarm
+```{r}
+plot(summary(sensLocal))
+```
+
+# Sensitivity testing II: 
+
+global range test, one parameter at a time
+
+## Range test
+
+* The local sensitivity test is a robustness check.
+* Once we are comfortable that the model is behaving reasonably, we can test a wider ("global") range of values.
+* This allows "what-if" types of analyses to be performed.
+
+## Set up range of parameters to test {.smaller}
+
+Create a table with minimum and maximum values for each parameter that we want to test.
+
+We can include multiple parameters in the table, even if we are only testing one at a time.
+
+```{r}
+parRange <- tribble(
+  ~param, ~min, ~max,
+  "r_birth",  0,    9,
+  "r_death",  0,  0.2 # original was 0.02
+) %>%
+  as_data_frame() %>% column_to_rownames("param") # getting data in correct format
+
+parRange
+```
+
+## Run the analysis {.smaller}
+
+Although `parRange` has ranges for both `r_birth` and `r_death` we can limit to just one here if we want to.
+```{r}
+sR <- sensRange(func= function(parms) ode(state, times, model, parms), # this fits our model with new parmaters ("parms")
+                parms=parameters, # the initial parameter values defined above,
+                dist="grid", # how do we want our parameters to be distributed?
+                parRange = parRange["r_death",], # specify that we want to only test r_death
+                num=10 # how many values of r_death do we want to test?
+)
+```
+
+## Quick look at the results {.smaller}
+
+Each row shows the results from one tested value of `r_death`
+
+```{r}
+head(sR)
+```
+
+## plot a summary {.smaller}
+
+The plot shows the average (line), +/- standard deviation (light grey) and total range (dark grey) of values.
+
+The dashed yellow line are the values from the original parameter fit
+```{r}
+plot(summary(sR), 
+     obs=fit, # the fit from the original parameter values
+     obspar = list(type="l", col="yellow", lty=2), #  define how the "observed" line should look
+     xlab="days", ylab="people")
+```
+## Group Exercise 2 {.smaller}
+
+a. Which node (pool of individuals) is most sensitive to changes in `r_death`?
+
+b. Does this make biological sense? Explain?
+
+```{r, echo=FALSE}
+plot(summary(sR), 
+     obs=fit, # the fit from the original parameter values
+     obspar = list(type="l", col="yellow", lty=2), #  define how the "observed" line should look
+     xlab="days", ylab="people")
+```
+
+## Sensitivity Analysis: plot fit for each value of r_death {.smaller}
+
+We can plot the response of R to each different value of `r_death` tested
+
+```{r, echo=TRUE}
+plot(sR, 
+     which = "R",
+     xlab="days", ylab="people")
+```
+
+## Tested values of `r_death`
+
+What values of `r_death` were tested in our grid search?
+
+```{r}
+sR$r_death %>% unique() %>% round(3)
+```
+
+
+## Group Exercise 3 {.smaller}
+
+Let's explore masking.
+
+a.  Assuming masking is effective, which rate would masking alter and in which direction?
+b.  Let's model what might happen with masking.  Do a sensitivity analysis for the rate that you chose above. Is it possible to limit the peak percentage of infected people to ~25%?  Which rate did you alter to achieve this and by how much?  Did the time of peak infection change?
+c.  What additional nodes and edges might you want to more realistically model masking?
+
+# Monte Carlo sensitivity analysis
+
+## Monte Carlo analysis {.smaller}
+
+At least with the FME package, Monte Carlo analysis is good for assessing sensitivity of a single output variable per time course.
+
+In our case we might be interested in the sensitivity of the maximum number of infected people over time.
+
+## Monte Carlo set up
+```{r}
+fitMaxI <- function(parms) {
+  fit <- ode(state, times, model, parms)
+  return(c(I=max(fit[,"I"])))
+}
+
+#range from 0.1 to 10X original value for each parameter
+parRangeCRL <- tribble(
+  ~param,         ~min,   ~max,
+  "r_infection",  5e-05,  5e-03,
+  "r_recovery",   5e-03,  5e-01,
+  "r_suscept",    1e-03,  1e-01,
+  "r_death",      2e-03,  2e-01 
+) %>%
+  as_data_frame() %>% column_to_rownames("param") # getting data in correct format
+```
+
+## Monte Carlo fit
+```{r}
+sensCRL <- modCRL(func= fitMaxI,
+                  parms=parameters,
+                  dist="latin",
+                  parRange = parRangeCRL,
+                  num=1000
+)
+```
+
+## Plot the Monte Carlo results
+```{r}
+sensCRL %>% 
+  pivot_longer(-"I", names_to = "parameter") %>%
+  ggplot(aes(x=value, y=I)) +
+  geom_point() + 
+  geom_smooth() + 
+  facet_wrap(~parameter, ncol=2, scales="free_x") +
+  ggtitle("Sensitivity Analysis Max I")
+```
+
+## Group Exercise 4
+
+a. What is the y axis on the Monte Carlo plot?
+b. Which parameter has the largest effect
+c. Does the match what you chose for the masking exercise?
+d. If you were to choose the Monte Carlo analysis to answer the questions from the masking exercise _"Is it possible to limit the peak percentage of infected people to ~25%?  Which rate did you alter to achieve this and by how much?"_ would you get the same answer?
+
+
+# Likely stopping point
+
+## Group Exercise 5
+
+a. Draw a diagram for a SIR model that includes vaccination
+b. What additional nodes and edges would be required?
+
+## Group Exercise 6
+
+Implement the vaccination model.  This can be done as a group, everyone in the group can turn in the same screenshot

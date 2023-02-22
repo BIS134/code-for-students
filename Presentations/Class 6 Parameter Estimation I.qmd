@@ -1,0 +1,282 @@
+---
+title: "Parameter Estimation I"
+subtitle: "BIS134 Class 6"
+author: "Julin Maloof"
+format:
+  revealjs:
+    margin: 0.075
+    code-line-numbers: false
+    embed-resources: true
+---
+
+## Midterm Info
+
+Midterm I is Wednesday in class, in this room (unless you have heard otherwise)
+
+* Bring: a Pen
+* Format: all short answer
+* There are no questions on R code
+* See study info file on Canvas
+* Maloof office hours today at 1:10 (Zoom, see Canvas)
+* Maloof review session tomorrow at 5:10 (Zoom, see Canvas)
+
+## Class outline
+
+* Sensitivity Analysis, continued
+  - Go over Exercise 3 from last week
+  - MonteCarlo parameter estimation
+* Parameter estimation part I
+  - Intro
+  - Practice
+
+## Learning Objectives
+
+* Modify R Code to run a global sensitivity analysis
+* Interpret a global sensitivity analysis
+* Understand what the R/FME implementation of MonteCarlo sensitivity analysis is designed for
+* Know why and when parameter estimation is necessary
+* Know the difference between _bottom up_ and _top down_ approaches
+* Practice manual parameter estimation on simple and multiple regression models
+
+# Sensitivity Analysis, continued
+
+```{r, echo=FALSE, eval = TRUE, warning=FALSE, message=FALSE}
+#note: this is code that was run in Class 04 and 05, so not displaying it here
+library(deSolve)
+library(FME)
+library(tidyverse)
+
+parameters <- c(
+  r_birth = 3, # 3 people born or emigrate per day
+  r_death = 0.02, # 2 % of infected people die per day
+  r_suscept = 0.01, # 1 % of the recovered people become susceptible per day
+  r_recovery = 0.05, # 5% of the infected people gain immunity per day
+  r_infection = 0.0005 # infection rate
+)
+
+state <- c(
+  S = 990, #990 susceptible individuals at the beginning
+  I = 10, #10 infected individuals at the beginning
+  R = 0 #no recovered individuals at the beginning
+)
+
+times = seq(0, 100, by = 1) # days 0 to 100, 1 day at a time
+
+model <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), { # allows us to refer to state and parameter components by name
+    #ODEs that specify the rates of change for each variable
+    dS = r_birth + r_suscept*R - r_infection*S*I
+    dI = r_infection*S*I - r_recovery*I - r_death*I
+    dR = r_recovery*I - r_suscept*R
+    
+    # return the rate of change
+    list(c(dS, dI, dR))
+  })
+}
+
+fit <- ode(state, times, model, parameters)
+```
+
+## Group Exercise sensitivity analysis 3 {.smaller}
+
+Let's explore masking.
+
+a.  Assuming masking is effective, which rate would masking alter and in which direction?
+b.  Let's model what might happen with masking.  Do a sensitivity analysis for the rate that you chose above. Is it possible to limit the peak percentage of infected people to ~25%?  Which rate did you alter to achieve this and by how much?  Did the time of peak infection change?
+c.  What additional nodes and edges might you want to more realistically model masking?
+
+# Monte Carlo sensitivity analysis
+
+## Monte Carlo analysis {.smaller}
+
+At least with the FME package, Monte Carlo analysis is good for assessing sensitivity of a single output variable per time course. (not values across the time course).
+
+Multiple parameters can be varied at a time.
+
+In our case we might be interested in the sensitivity of the maximum number of infected people over time.
+
+## Monte Carlo set up
+```{r, echo=TRUE}
+fitMaxI <- function(parms) {
+  fit <- ode(state, times, model, parms)
+  return(c(I=max(fit[,"I"])))
+}
+
+#range from 0.1 to 10X original value for each parameter
+parRangeCRL <- tribble(
+  ~param,         ~min,   ~max,
+  "r_infection",  5e-05,  5e-03,
+  "r_recovery",   5e-03,  5e-01,
+  "r_suscept",    1e-03,  1e-01,
+  "r_death",      2e-03,  2e-01 
+) %>%
+  as_data_frame() %>% column_to_rownames("param") # getting data in correct format
+```
+
+## Monte Carlo fit
+```{r, echo=TRUE}
+sensCRL <- modCRL(func= fitMaxI,
+                  parms=parameters,
+                  dist="latin",
+                  parRange = parRangeCRL,
+                  num=1000
+)
+```
+
+## Plot the Monte Carlo results {.smaller}
+```{r, echo=TRUE}
+sensCRL %>% 
+  pivot_longer(-"I", names_to = "parameter") %>%
+  ggplot(aes(x=value, y=I)) +
+  geom_point() + 
+  geom_smooth() + 
+  facet_wrap(~parameter, ncol=2, scales="free_x") +
+  ggtitle("Sensitivity Analysis Max I")
+```
+
+## Questions
+(not a group exercise 2023)
+
+a. What is the y axis on the Monte Carlo plot?
+b. Which parameter has the largest effect
+c. Does the match what you chose for the masking exercise?
+d. If you were to choose the Monte Carlo analysis to answer the questions from the masking exercise _"Is it possible to limit the peak percentage of infected people to ~25%?  Which rate did you alter to achieve this and by how much?"_ would you get the same answer?
+
+## Sensitivity Analysis wrap up: {.smaller}
+:::{.incremental}
+* Overall: vary rates or other model constants and see how outputs respond
+* The more an output responds to perturbation of an input, the more __sensitive__ it is
+* Local: use for testing modul robustness / consistency
+* Global: use for testing hypotheses or new scenarios
+* in R: (not on exam)
+  - `sensRange` for looking at how whole time course responds
+  - `sensCRL` (Monte Carlo) for looking at how an output summary (e.g. max infection) responds
+:::
+
+# Parameter Estimation I
+
+## Parameter Estimation Intro
+:::{.incremental}
+* Model parameters are numerical values that do not depend on other model variables
+  - so far: rates
+  - regression models: intercept, slope
+  - could also be temperature or other environmental variables (assuming you are not modeling weather...)
+* Up until now these have been given to us.  But where do they come from?
+  * They must be measured or estimated
+:::
+
+## Parameter Estimation approach 1: Bottom up{.smaller}
+:::{.incremental}
+* Detailed, direct measurement of each rate, one at a time
+* For "I" in S-I-R model, this could mean controlled experiments, or detailed contact tracing
+* Biochemistry: detailed enzyme kinetics
+* Gene regulation: TF binding constants, mRNA transcription and degradation rates
+* Pros: can get precise rates
+* Cons: 
+  - A lot of work!
+  - Not feasible for large systems
+  - Because studying in isolation, may get wrong rate
+:::
+
+## Parameter Estimation approach 2: Top down{.smaller}
+:::{.incremental}
+  * Measure components (nodes) over time, not rates
+  * S-I-R: Measure number of people in each class over many days
+  * Biochemistry: measure reaction subtrate and products over time
+  * Gene regulation: measure RNA quantities over time
+  * Then: vary model parameters to achieve the best fit between model output and observed data.
+  * Pros: 
+    - Can work on large systems
+    - Calculate rates in relevant context
+  * Cons:
+    - Parameter estimation is computationally hard for large systems
+    - Should ground truth
+    - Can be expensive
+:::
+## Group Exercise parameter estimate 1
+
+Group 1, 3: How would you estimate `r_suscept` in the S-I-R model using a bottom-up approach?
+
+Group 2, 4: How would you estimate `r_recovery` (aka `r_immunity`) in the S-I-R model using a bottom-up approach?
+
+![](figures/figure_02_10.jpg)
+
+# Focus on Top-down parameter estimation 
+
+## Top Down Parameter Estimation {.smaller}
+1) Run the model with a set of parameters and get model output.
+2) Quantify the distance between observed data and model predictions with the sum squared error (SSE)
+$\sum\limits_{i=1}^N(obs_i - predicted_i)^2$
+
+```{r, message=FALSE}
+mpgsmall <- mpg %>% filter(!duplicated(displ)) 
+
+lm.mpg <- lm(cty ~ displ, data=mpgsmall)
+
+mpgsmall$predicted_good <- predict(lm.mpg)
+
+int.bad <- 20
+
+slope.bad <- -1.2
+
+mpgsmall$predicted_bad <- int.bad + mpgsmall$displ*slope.bad
+
+y1bad <- int.bad + slope.bad * min(mpgsmall$displ)
+y2bad <- int.bad + slope.bad * max(mpgsmall$displ)
+
+mpgsmall%>%
+  ggplot(aes(x=displ, y=cty)) +
+  geom_point() +
+  geom_segment(aes(xend=displ, yend=predicted_bad),lty=2) +
+  geom_segment(x=min(mpgsmall$displ), y=y1bad, xend=max(mpgsmall$displ), yend=y2bad, color="darkred") +
+  geom_point(aes(y=predicted_bad), color="red") +
+  xlab("Engine displacement (L)") +
+  ylab("City m.p.g")
+```
+Observations are black, predictions are red, and the dashed line shows the error.
+
+## Parameter estimation: minimize SSE {.smaller}
+1) Run the model with a set of parameters and get model output.
+2) Quantify the distance between observed data and model predictions with the sum squared error (SSE)
+$\sum\limits_{i=1}^N(obs_i - predicted_i)^2$
+3) Calculate or search for model parameters that minimize SSE
+
+```{r}
+goodfit <- mpgsmall%>%
+  ggplot(aes(x=displ, y=cty)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  geom_segment(aes(xend=displ, yend=predicted_good),lty=2) +
+  geom_point(aes(y=predicted_good), color="skyblue") +
+  xlab("Engine displacement (L)") +
+  ylab("City m.p.g") +
+  ggtitle("better fit")
+
+badfit <- mpgsmall%>%
+  ggplot(aes(x=displ, y=cty)) +
+  geom_point() +
+  geom_segment(aes(xend=displ, yend=predicted_bad),lty=2) +
+  geom_segment(x=min(mpgsmall$displ), y=y1bad, xend=max(mpgsmall$displ), yend=y2bad, color="darkred") +
+  geom_point(aes(y=predicted_bad), color="red") +
+  xlab("Engine displacement (L)") +
+  ylab("City m.p.g") +
+  ggtitle("less good fit")
+
+gridExtra::grid.arrange(badfit, goodfit, ncol=2)
+```
+
+## Parameter estimation: minimize SSE {.smaller}
+
+OK, but how do we find the parameters the minimize SSE?
+
+For linear regressions this can be mathematically solved
+
+For most other models we ask the computer to search through many different values to find those that give the lowest SSE (next week...)
+
+For the rest of today, let's try manual parameter estimation.  Please go to
+
+[http://bis134.net:3838/ParameterEstimation_I/](http://bis134.net:3838/ParameterEstimation_I/)
+
+Note: new link!
+
+Note need to record some info in Canvas as you go through it.
