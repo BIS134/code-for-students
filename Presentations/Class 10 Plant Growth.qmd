@@ -100,7 +100,7 @@ library(GA)
 ## Lights On/Off {.smaller}
 To get the lights to turn on and off we need:
 
-* An _root function_ that evalutes to 0 at each time point where we want a transition
+* An _root function_ that evaluates to 0 at each time point where we want a transition
 * An _event function_ that specifies if lights are on (1) or off (0) given the time of day
 
 We take advantage of the `%%` _modulo_ operator that returns the remainder from division.  By dividing time in hours by 24, we will have a remainder of "0" every 24 hours.
