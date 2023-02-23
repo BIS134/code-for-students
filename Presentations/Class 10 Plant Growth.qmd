@@ -89,6 +89,11 @@ Students are not responsible for knowing this code.
 We probably will not go over it in class
 
 ## Libraries
+```{r}
+#If you haven't installed these libraries, you need to do so:
+install.packages(c("tidyverse", "deSolve", "FME", "pso", "GA"))
+```
+
 ```{r, echo=TRUE}
 library(tidyverse)
 library(deSolve)
